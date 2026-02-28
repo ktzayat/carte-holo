@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MESS//IA — CARTE TACTIQUE</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --cyan: #00f5ff;
+  --cyan-dim: rgba(0,245,255,0.15);
+  --cyan-glow: rgba(0,245,255,0.4);
+  --red: #ff2233;
+  --red-dim: rgba(255,34,51,0.15);
+  --orange: #ff6a00;
+  --amber: #ffb700;
+  --bg: #00050a;
+  --grid: rgba(0,245,255,0.04);
+  --text: #a0e8f0;
+  --text-dim: rgba(0,245,255,0.35);
+}
+
+body {
+  background: var(--bg);
+  font-family: 'Share Tech Mono', monospace;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  cursor: crosshair;
+  user-select: none;
+}
+
+/* SCANLINES */
+body::before {
+  content:'';
+  position:fixed;
+  inset:0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.06) 3px, rgba(0,0,0,0.06) 4px);
+  pointer-events:none;
+  z-index:9999;
+}
+
+/* MOVING SCANLINE */
+body::after {
+  content:'';
+  position:fixed;
+  left:0; top:-5%;
+  width:100%; height:8%;
+  background: linear-gradient(transparent, rgba(0,245,255,0.04), transparent);
+  animation: scanmove 6s linear infinite;
+  pointer-events:none;
+  z-index:9998;
+}
+@keyframes scanmove { 0%{top:-5%} 100%{top:105%} }
+
+/* HEADER */
+header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  padding: 14px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(to bottom, rgba(0,5,10,0.95), transparent);
+  border-bottom: 1px solid rgba(0,245,255,0.1);
+}
+
+.h-logo {
+  font-family: 'Orbitron', monospace;
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--cyan);
+  letter-spacing: 5px;
+  text-shadow: 0 0 15px var(--cyan-glow);
+  animation: flicker 8s infinite;
+}
+
+.h-right {
+  display: flex;
+  gap: 24px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  align-items: center;
+}
+
+.h-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: blink 1.2s infinite;
+  margin-right: 5px;
+}
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+@keyframes flicker { 0%,100%{opacity:1} 93%{opacity:0.4} 94%{opacity:1} 97%{opacity:0.7} 98%{opacity:1} }
+
+/* MAP CONTAINER */
+#mapWrap {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+/* SVG MAP */
+#worldSvg {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+}
+
+/* HOLOGRAPHIC OVERLAY EFFECTS */
+.holo-vignette {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0,5,10,0.7) 100%);
+  pointer-events: none;
+  z-index: 50;
+}
+
+.holo-grid {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ANIMATED CONCENTRIC RINGS ON POINTS */
+@keyframes ring-expand {
+  0% { transform: scale(0.5); opacity: 0.8; }
+  100% { transform: scale(3.5); opacity: 0; }
+}
+@keyframes ring-expand-slow {
+  0% { transform: scale(0.5); opacity: 0.6; }
+  100% { transform: scale(5); opacity: 0; }
+}
+@keyframes ring-heat {
+  0% { transform: scale(0.5); opacity: 0.9; }
+  100% { transform: scale(4); opacity: 0; }
+}
+
+/* POINT MARKERS */
+.map-point {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 60;
+}
+
+.point-core {
+  position: relative;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  z-index: 3;
+}
+
+.point-core::before {
+  content:'';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid;
+  opacity: 0.6;
+}
+
+/* RINGS */
+.ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid;
+  top: 50%; left: 50%;
+  width: 30px; height: 30px;
+  margin: -15px 0 0 -15px;
+  animation: ring-expand 2.5s ease-out infinite;
+}
+.ring:nth-child(2) { animation-delay: 0.8s; }
+.ring:nth-child(3) { animation-delay: 1.6s; }
+
+/* TEL AVIV — CYAN (Mosseba HQ) */
+.point-telaviv .point-core {
+  background: radial-gradient(circle, #fff 0%, var(--cyan) 50%, rgba(0,245,255,0.2) 100%);
+  box-shadow: 0 0 20px var(--cyan), 0 0 40px var(--cyan-glow), 0 0 80px rgba(0,245,255,0.2);
+}
+.point-telaviv .point-core::before { border-color: var(--cyan); }
+.point-telaviv .ring { border-color: var(--cyan); width: 24px; height: 24px; margin: -12px 0 0 -12px; }
+
+/* LOS SANTOS — RED/ORANGE (serveurs en surchauffe) */
+.point-lossantos .point-core {
+  background: radial-gradient(circle, #fff 0%, var(--red) 40%, var(--orange) 70%, rgba(255,34,51,0.2) 100%);
+  box-shadow: 0 0 20px var(--red), 0 0 40px rgba(255,34,51,0.5), 0 0 80px rgba(255,106,0,0.3);
+  animation: heat-pulse 0.8s ease-in-out infinite;
+}
+.point-lossantos .point-core::before { border-color: var(--orange); }
+.point-lossantos .ring { border-color: var(--red); width: 24px; height: 24px; margin: -12px 0 0 -12px; animation: ring-heat 1.8s ease-out infinite; }
+
+@keyframes heat-pulse {
+  0%,100% { box-shadow: 0 0 20px var(--red), 0 0 40px rgba(255,34,51,0.5), 0 0 80px rgba(255,106,0,0.3); }
+  50% { box-shadow: 0 0 35px var(--red), 0 0 70px rgba(255,34,51,0.7), 0 0 120px rgba(255,106,0,0.5); }
+}
+
+/* CONNECTION LINE */
+.connection-line {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  pointer-events: none;
+  z-index: 55;
+}
+
+/* DATA PANEL */
+.data-panel {
+  position: fixed;
+  z-index: 200;
+  border: 1px solid;
+  padding: 16px 20px;
+  min-width: 240px;
+  backdrop-filter: blur(8px);
+  transition: opacity 0.3s;
+}
+
+.data-panel .dp-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 11px;
+  letter-spacing: 3px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid;
+}
+
+.data-panel .dp-row {
+  display: flex;
+  gap: 10px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  line-height: 1.6;
+}
+
+.data-panel .dp-key { opacity: 0.5; min-width: 90px; font-size: 9px; letter-spacing: 1.5px; }
+.data-panel .dp-val { font-size: 10px; }
+
+/* TEL AVIV PANEL */
+.panel-telaviv {
+  top: 90px; right: 24px;
+  border-color: rgba(0,245,255,0.3);
+  background: rgba(0,5,10,0.85);
+  color: var(--cyan);
+}
+.panel-telaviv .dp-title { color: var(--cyan); border-color: rgba(0,245,255,0.2); text-shadow: 0 0 10px var(--cyan-glow); }
+.panel-telaviv .dp-val.ok { color: #00ff88; }
+.panel-telaviv .dp-val.warn { color: var(--amber); }
+
+/* LOS SANTOS PANEL */
+.panel-lossantos {
+  bottom: 80px; left: 24px;
+  border-color: rgba(255,34,51,0.4);
+  background: rgba(10,0,0,0.88);
+  color: #ffaaaa;
+}
+.panel-lossantos .dp-title { color: var(--red); border-color: rgba(255,34,51,0.2); text-shadow: 0 0 10px rgba(255,34,51,0.6); }
+.panel-lossantos .dp-val.danger { color: var(--red); animation: blink 0.6s infinite; }
+.panel-lossantos .dp-val.warn { color: var(--orange); }
+.panel-lossantos .dp-val.ok { color: #ffdd66; }
+
+/* HEAT BARS */
+.heat-bar-wrap {
+  background: rgba(255,255,255,0.05);
+  height: 3px;
+  border-radius: 2px;
+  margin-top: 3px;
+  overflow: hidden;
+}
+.heat-bar {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--orange), var(--red));
+  animation: heat-bar-anim 2s ease-in-out infinite;
+  transform-origin: left;
+}
+@keyframes heat-bar-anim {
+  0%,100% { width: 87%; }
+  50% { width: 94%; }
+}
+
+/* BOTTOM STATUS BAR */
+.status-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 100;
+  padding: 10px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(to top, rgba(0,5,10,0.95), transparent);
+  border-top: 1px solid rgba(0,245,255,0.08);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+}
+
+/* CORNER DECORATIONS */
+.corner {
+  position: fixed;
+  width: 30px; height: 30px;
+  z-index: 300;
+  pointer-events: none;
+}
+.corner-tl { top:16px; left:16px; border-top:1px solid var(--cyan); border-left:1px solid var(--cyan); }
+.corner-tr { top:16px; right:16px; border-top:1px solid var(--cyan); border-right:1px solid var(--cyan); }
+.corner-bl { bottom:16px; left:16px; border-bottom:1px solid var(--cyan); border-left:1px solid var(--cyan); }
+.corner-br { bottom:16px; right:16px; border-bottom:1px solid var(--cyan); border-right:1px solid var(--cyan); }
+
+/* ANIMATED DATA STREAM on connection */
+@keyframes dash-anim { to { stroke-dashoffset: -40; } }
+
+/* TOOLTIP */
+.tooltip {
+  position: absolute;
+  bottom: 28px; left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 9px;
+  letter-spacing: 2px;
+  padding: 4px 10px;
+  border: 1px solid;
+  pointer-events: none;
+  animation: fadeInUp 0.3s ease;
+}
+.tooltip-cyan { border-color: var(--cyan); color: var(--cyan); background: rgba(0,245,255,0.05); }
+.tooltip-red { border-color: var(--red); color: var(--red); background: rgba(255,34,51,0.05); }
+
+@keyframes fadeInUp { from{opacity:0;transform:translateX(-50%) translateY(5px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+
+/* CLOCK */
+#liveClock { font-family: 'Orbitron', monospace; font-size: 11px; color: var(--cyan); letter-spacing: 3px; }
+
+/* PARTICLE SPARKS (Los Santos heat) */
+.spark {
+  position: absolute;
+  width: 2px; height: 2px;
+  border-radius: 50%;
+  background: var(--red);
+  pointer-events: none;
+  animation: spark-fly var(--dur, 1.5s) ease-out forwards;
+}
+@keyframes spark-fly {
+  0% { transform: translate(0,0) scale(1); opacity: 1; }
+  100% { transform: translate(var(--tx,20px), var(--ty,-30px)) scale(0); opacity: 0; }
+}
+
+/* ALERT BANNER */
+.alert-banner {
+  position: fixed;
+  top: 55px; left: 50%; transform: translateX(-50%);
+  z-index: 150;
+  background: rgba(255,34,51,0.08);
+  border: 1px solid rgba(255,34,51,0.4);
+  padding: 6px 24px;
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--red);
+  white-space: nowrap;
+  animation: blink-border 2s infinite;
+}
+@keyframes blink-border {
+  0%,100%{border-color:rgba(255,34,51,0.4)} 50%{border-color:rgba(255,34,51,0.9)}
+}
+
+/* CROSSHAIR CURSOR */
+.crosshair-x, .crosshair-y {
+  position: fixed;
+  background: rgba(0,245,255,0.07);
+  pointer-events: none;
+  z-index: 30;
+  transition: none;
+}
+.crosshair-x { height: 1px; left:0; right:0; }
+.crosshair-y { width: 1px; top:0; bottom:0; }
+</style>
+</head>
+<body>
+
+<!-- CROSSHAIRS -->
+<div class="crosshair-x" id="cx"></div>
+<div class="crosshair-y" id="cy"></div>
+
+<!-- CORNERS -->
+<div class="corner corner-tl"></div>
+<div class="corner corner-tr"></div>
+<div class="corner corner-bl"></div>
+<div class="corner corner-br"></div>
+
+<!-- HOLOGRAPHIC OVERLAYS -->
+<div class="holo-vignette"></div>
+<div class="holo-grid"></div>
+
+<!-- HEADER -->
+<header>
+  <div class="h-logo">MESS // IA — CARTE TACTIQUE</div>
+  <div class="h-right">
+    <span><span class="h-dot"></span>SURVEILLANCE ACTIVE</span>
+    <span id="liveClock">--:--:--</span>
+    <span>SYS-2035</span>
+  </div>
+</header>
+
+<!-- ALERT -->
+<div class="alert-banner">⚠ ALERTE THERMIQUE — NŒUD LOS SANTOS — SURCHAUFFE CRITIQUE</div>
+
+<!-- MAP -->
+<div id="mapWrap">
+
+  <!-- SVG WORLD MAP (simplified continents as paths) -->
+  <svg id="worldSvg" viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <filter id="glow-cyan">
+        <feGaussianBlur stdDeviation="2" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <filter id="glow-red">
+        <feGaussianBlur stdDeviation="3" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <radialGradient id="bgGrad" cx="50%" cy="50%" r="60%">
+        <stop offset="0%" stop-color="#001a22"/>
+        <stop offset="100%" stop-color="#00050a"/>
+      </radialGradient>
+      <!-- Animated dash pattern for connection line -->
+      <marker id="arrow-cyan" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+        <circle cx="3" cy="3" r="1.5" fill="#00f5ff" opacity="0.8"/>
+      </marker>
+    </defs>
+
+    <!-- BACKGROUND -->
+    <rect width="1000" height="500" fill="url(#bgGrad)"/>
+
+    <!-- LATITUDE LINES -->
+    <g stroke="rgba(0,245,255,0.06)" stroke-width="0.5" fill="none">
+      <line x1="0" y1="83" x2="1000" y2="83"/>
+      <line x1="0" y1="166" x2="1000" y2="166"/>
+      <line x1="0" y1="250" x2="1000" y2="250"/>
+      <line x1="0" y1="333" x2="1000" y2="333"/>
+      <line x1="0" y1="416" x2="1000" y2="416"/>
+    </g>
+    <!-- LONGITUDE LINES -->
+    <g stroke="rgba(0,245,255,0.06)" stroke-width="0.5" fill="none">
+      <line x1="111" y1="0" x2="111" y2="500"/>
+      <line x1="222" y1="0" x2="222" y2="500"/>
+      <line x1="333" y1="0" x2="333" y2="500"/>
+      <line x1="444" y1="0" x2="444" y2="500"/>
+      <line x1="556" y1="0" x2="556" y2="500"/>
+      <line x1="667" y1="0" x2="667" y2="500"/>
+      <line x1="778" y1="0" x2="778" y2="500"/>
+      <line x1="889" y1="0" x2="889" y2="500"/>
+    </g>
+    <!-- EQUATOR -->
+    <line x1="0" y1="250" x2="1000" y2="250" stroke="rgba(0,245,255,0.12)" stroke-width="1" stroke-dasharray="8,6"/>
+
+    <!-- CONTINENTS (simplified outlines) -->
+    <!-- NORTH AMERICA -->
+    <path d="M 80,80 L 95,70 L 130,65 L 165,72 L 190,85 L 210,100 L 220,120 L 215,145 L 200,165 L 185,185 L 175,210 L 160,230 L 145,245 L 130,240 L 115,225 L 100,200 L 88,175 L 78,150 L 72,125 L 75,100 Z"
+          fill="rgba(0,245,255,0.06)" stroke="rgba(0,245,255,0.18)" stroke-width="0.8"/>
+    <!-- SOUTH AMERICA -->
+    <path d="M 165,260 L 185,252 L 205,258 L 220,275 L 225,300 L 220,330 L 210,355 L 195,375 L 178,385 L 160,378 L 148,360 L 142,335 L 145,308 L 152,282 Z"
+          fill="rgba(0,245,255,0.06)" stroke="rgba(0,245,255,0.18)" stroke-width="0.8"/>
+    <!-- EUROPE -->
+    <path d="M 450,85 L 465,78 L 490,80 L 510,88 L 520,100 L 515,115 L 500,122 L 480,125 L 462,118 L 450,105 Z"
+          fill="rgba(0,245,255,0.07)" stroke="rgba(0,245,255,0.2)" stroke-width="0.8"/>
+    <!-- SCANDINAVIA bump -->
+    <path d="M 470,68 L 478,62 L 488,65 L 492,75 L 482,80 L 471,78 Z"
+          fill="rgba(0,245,255,0.06)" stroke="rgba(0,245,255,0.15)" stroke-width="0.6"/>
+    <!-- AFRICA -->
+    <path d="M 455,145 L 480,138 L 505,142 L 520,158 L 525,180 L 522,210 L 515,240 L 505,268 L 490,285 L 472,288 L 455,278 L 442,255 L 438,228 L 440,200 L 445,172 Z"
+          fill="rgba(0,245,255,0.06)" stroke="rgba(0,245,255,0.18)" stroke-width="0.8"/>
+    <!-- MIDDLE EAST / ARABIAN PENINSULA -->
+    <path d="M 520,145 L 545,140 L 562,150 L 568,168 L 558,185 L 540,188 L 522,178 Z"
+          fill="rgba(0,245,255,0.06)" stroke="rgba(0,245,255,0.18)" stroke-width="0.8"/>
+    <!-- ASIA (large block) -->
+    <path d="M 530,75 L 580,65 L 640,60 L 700,65 L 750,72 L 790,80 L 820,95 L 830,115 L 820,138 L 800,155 L 770,165 L 740,168 L 700,160 L 660,155 L 620,158 L 590,165 L 560,162 L 535,150 L 522,132 L 525,110 L 530,90 Z"
+          fill="rgba(0,245,255,0.06)" stroke="rgba(0,245,255,0.18)" stroke-width="0.8"/>
+    <!-- INDIA -->
+    <path d="M 610,165 L 625,162 L 640,168 L 645,185 L 640,205 L 628,218 L 615,212 L 607,195 L 606,175 Z"
+          fill="rgba(0,245,255,0.06)" stroke="rgba(0,245,255,0.15)" stroke-width="0.6"/>
+    <!-- SE ASIA / INDONESIA simplified -->
+    <path d="M 720,175 L 748,170 L 765,178 L 772,192 L 760,202 L 740,198 L 722,190 Z"
+          fill="rgba(0,245,255,0.05)" stroke="rgba(0,245,255,0.12)" stroke-width="0.6"/>
+    <!-- AUSTRALIA -->
+    <path d="M 760,290 L 800,278 L 840,280 L 868,295 L 875,320 L 865,345 L 845,358 L 818,360 L 790,352 L 768,335 L 755,312 Z"
+          fill="rgba(0,245,255,0.06)" stroke="rgba(0,245,255,0.18)" stroke-width="0.8"/>
+    <!-- GREENLAND -->
+    <path d="M 200,42 L 225,35 L 255,38 L 268,52 L 260,65 L 238,70 L 215,66 L 202,55 Z"
+          fill="rgba(0,245,255,0.04)" stroke="rgba(0,245,255,0.1)" stroke-width="0.5"/>
+
+    <!-- CONNECTION LINE: Los Santos (~135,195) to Tel Aviv (~548,148) -->
+    <!-- Great-circle arc approximation -->
+    <path id="connectionPath"
+      d="M 135,195 Q 340,80 548,148"
+      fill="none"
+      stroke="rgba(0,245,255,0.25)"
+      stroke-width="1.2"
+      stroke-dasharray="8,5"
+      filter="url(#glow-cyan)">
+      <animate attributeName="stroke-dashoffset" from="0" to="-52" dur="2s" repeatCount="indefinite"/>
+    </path>
+    <!-- Second line - data packets traveling -->
+    <path
+      d="M 135,195 Q 340,80 548,148"
+      fill="none"
+      stroke="rgba(0,245,255,0.08)"
+      stroke-width="3"
+      stroke-dasharray="0,1000">
+    </path>
+
+    <!-- Moving dot along path: LS → TLV -->
+    <circle r="3" fill="#00f5ff" opacity="0.9" filter="url(#glow-cyan)">
+      <animateMotion dur="4s" repeatCount="indefinite" rotate="auto">
+        <mpath href="#connectionPath"/>
+      </animateMotion>
+    </circle>
+
+    <!-- HEAT GLOW: Los Santos -->
+    <circle cx="135" cy="195" r="45" fill="none" stroke="rgba(255,34,51,0.08)" stroke-width="2">
+      <animate attributeName="r" values="30;55;30" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.2;0.05;0.2" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="135" cy="195" r="22" fill="rgba(255,106,0,0.07)">
+      <animate attributeName="r" values="18;28;18" dur="1.2s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- CYAN GLOW: Tel Aviv -->
+    <circle cx="548" cy="148" r="35" fill="none" stroke="rgba(0,245,255,0.07)" stroke-width="1.5">
+      <animate attributeName="r" values="25;42;25" dur="3s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- LOCATION LABELS in SVG -->
+    <text x="548" y="136" text-anchor="middle" font-family="Orbitron,monospace" font-size="7" fill="rgba(0,245,255,0.7)" letter-spacing="2">MOSSEBA HQ</text>
+    <text x="548" y="143" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="6" fill="rgba(0,245,255,0.4)" letter-spacing="1">TEL AVIV — IL</text>
+
+    <text x="135" y="183" text-anchor="middle" font-family="Orbitron,monospace" font-size="7" fill="rgba(255,80,80,0.85)" letter-spacing="2">SERVEURS MESS//IA</text>
+    <text x="135" y="190" text-anchor="middle" font-family="Share Tech Mono,monospace" font-size="6" fill="rgba(255,100,0,0.6)" letter-spacing="1">LOS SANTOS — USA</text>
+
+    <!-- HEAT PARTICLES SVG -->
+    <g id="svgParticles" opacity="0.7">
+      <circle cx="128" cy="185" r="1.5" fill="#ff4400">
+        <animate attributeName="cy" values="185;160;185" dur="1.8s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="1;0;1" dur="1.8s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="140" cy="188" r="1" fill="#ff6600">
+        <animate attributeName="cy" values="188;158;188" dur="2.2s" begin="0.4s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="1;0;1" dur="2.2s" begin="0.4s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="133" cy="192" r="1.2" fill="#ff3300">
+        <animate attributeName="cy" values="192;165;192" dur="1.5s" begin="0.9s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="1;0;1" dur="1.5s" begin="0.9s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="122" cy="190" r="0.8" fill="#ff5500">
+        <animate attributeName="cy" values="190;162;190" dur="2s" begin="1.3s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="1;0;1" dur="2s" begin="1.3s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="145" cy="185" r="1" fill="#ff2200">
+        <animate attributeName="cy" values="185;155;185" dur="2.5s" begin="0.6s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="1;0;1" dur="2.5s" begin="0.6s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+
+    <!-- CROSSHAIR MARKERS at points -->
+    <!-- Tel Aviv crosshair -->
+    <g stroke="rgba(0,245,255,0.5)" stroke-width="0.7" fill="none">
+      <line x1="538" y1="148" x2="530" y2="148"/>
+      <line x1="558" y1="148" x2="566" y2="148"/>
+      <line x1="548" y1="138" x2="548" y2="130"/>
+      <line x1="548" y1="158" x2="548" y2="166"/>
+    </g>
+    <!-- Los Santos crosshair -->
+    <g stroke="rgba(255,34,51,0.6)" stroke-width="0.7" fill="none">
+      <line x1="125" y1="195" x2="117" y2="195"/>
+      <line x1="145" y1="195" x2="153" y2="195"/>
+      <line x1="135" y1="185" x2="135" y2="177"/>
+      <line x1="135" y1="205" x2="135" y2="213"/>
+    </g>
+
+    <!-- SCALE BAR -->
+    <g transform="translate(30,470)">
+      <line x1="0" y1="0" x2="80" y2="0" stroke="rgba(0,245,255,0.3)" stroke-width="1"/>
+      <line x1="0" y1="-4" x2="0" y2="4" stroke="rgba(0,245,255,0.3)" stroke-width="1"/>
+      <line x1="80" y1="-4" x2="80" y2="4" stroke="rgba(0,245,255,0.3)" stroke-width="1"/>
+      <text x="40" y="-7" text-anchor="middle" font-family="Share Tech Mono" font-size="6" fill="rgba(0,245,255,0.4)" letter-spacing="1">5000 KM</text>
+    </g>
+
+  </svg>
+
+  <!-- POINT MARKERS (HTML overlay for interactivity) -->
+  <!-- TEL AVIV -->
+  <div class="map-point point-telaviv" id="ptTelAviv" style="left:54.8%;top:29.6%">
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <div class="point-core"></div>
+    <div class="tooltip tooltip-cyan">MOSSEBA HQ — ACTIF</div>
+  </div>
+
+  <!-- LOS SANTOS -->
+  <div class="map-point point-lossantos" id="ptLosSantos" style="left:13.5%;top:39%">
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <div class="point-core"></div>
+    <div class="tooltip tooltip-red">SURCHAUFFE — CRITIQUE</div>
+  </div>
+
+</div>
+
+<!-- DATA PANEL: TEL AVIV -->
+<div class="data-panel panel-telaviv">
+  <div class="dp-title">// MOSSEBA HQ — TEL AVIV</div>
+  <div class="dp-row"><span class="dp-key">STATUT</span><span class="dp-val ok">OPÉRATIONNEL</span></div>
+  <div class="dp-row"><span class="dp-key">COORDS</span><span class="dp-val">32.0853° N / 34.7818° E</span></div>
+  <div class="dp-row"><span class="dp-key">NIVEAU SEC.</span><span class="dp-val ok">OMEGA — ACTIF</span></div>
+  <div class="dp-row"><span class="dp-key">DIRECTRICE</span><span class="dp-val">A. MOSSEBA</span></div>
+  <div class="dp-row"><span class="dp-key">SCANNER N3</span><span class="dp-val ok">EN LIGNE</span></div>
+  <div class="dp-row"><span class="dp-key">LIAISON LS</span><span class="dp-val warn">FLUX ACTIF — CHIFFRÉ</span></div>
+  <div class="dp-row"><span class="dp-key">AGENTS ACT.</span><span class="dp-val" id="agentCount">--</span></div>
+</div>
+
+<!-- DATA PANEL: LOS SANTOS -->
+<div class="data-panel panel-lossantos">
+  <div class="dp-title">// SERVEURS MESS//IA — LOS SANTOS</div>
+  <div class="dp-row"><span class="dp-key">STATUT</span><span class="dp-val danger">⚠ SURCHAUFFE</span></div>
+  <div class="dp-row"><span class="dp-key">COORDS</span><span class="dp-val">34.0522° N / 118.2437° O</span></div>
+  <div class="dp-row"><span class="dp-key">TEMPÉRATURE</span><span class="dp-val danger" id="tempVal">--°C</span></div>
+  <div class="dp-row"><span class="dp-key">CHARGE CPU</span><span class="dp-val danger" id="cpuVal">--%</span></div>
+  <div class="dp-row">
+    <span class="dp-key">CHARGE</span>
+    <span class="dp-val" style="flex:1">
+      <div class="heat-bar-wrap"><div class="heat-bar" id="heatBar"></div></div>
+    </span>
+  </div>
+  <div class="dp-row"><span class="dp-key">FRAGMENTS</span><span class="dp-val warn" id="fragCount">-- UNITÉS ACTIVES</span></div>
+  <div class="dp-row"><span class="dp-key">PROJET</span><span class="dp-val warn">LIMINAL — EN COURS</span></div>
+  <div class="dp-row"><span class="dp-key">CERBERUS ACC.</span><span class="dp-val danger">DÉTECTÉ</span></div>
+  <div class="dp-row"><span class="dp-key">RISQUE PERTE</span><span class="dp-val danger">ÉLEVÉ — 3-4 SEM.</span></div>
+</div>
+
+<!-- STATUS BAR -->
+<div class="status-bar">
+  <span>MESS // IA — SYSTÈME CARTOGRAPHIQUE — NIVEAU Ω</span>
+  <span id="dataStream" style="color:rgba(0,245,255,0.3);letter-spacing:1px;font-size:8px;max-width:400px;overflow:hidden;white-space:nowrap;"></span>
+  <span>2035.02.18 // SECTEUR-7</span>
+</div>
+
+<script>
+// ===== AUDIO =====
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let ctx = null;
+
+function initAudio() {
+  if(!ctx) { try { ctx = new AudioCtx(); } catch(e){} }
+}
+
+function playTone(freq, dur, type='sine', vol=0.08, delay=0) {
+  if(!ctx) return;
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.connect(g); g.connect(ctx.destination);
+  o.frequency.value = freq; o.type = type;
+  const t = ctx.currentTime + delay;
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(vol, t+0.01);
+  g.gain.exponentialRampToValueAtTime(0.001, t+dur);
+  o.start(t); o.stop(t+dur);
+}
+
+function playAmbient() {
+  if(!ctx) return;
+  // Sub-bass drone
+  const o1 = ctx.createOscillator(); const g1 = ctx.createGain();
+  o1.connect(g1); g1.connect(ctx.destination);
+  o1.frequency.value = 40; o1.type = 'sine'; g1.gain.value = 0.06;
+  o1.start(); o1.stop(ctx.currentTime + 5);
+  // High hum
+  const o2 = ctx.createOscillator(); const g2 = ctx.createGain();
+  o2.connect(g2); g2.connect(ctx.destination);
+  o2.frequency.value = 220; o2.type = 'sine';
+  g2.gain.setValueAtTime(0, ctx.currentTime);
+  g2.gain.linearRampToValueAtTime(0.025, ctx.currentTime+0.5);
+  g2.gain.linearRampToValueAtTime(0, ctx.currentTime+5);
+  o2.start(); o2.stop(ctx.currentTime+5);
+}
+
+function playHeatBeep() {
+  if(!ctx) return;
+  playTone(880, 0.05, 'square', 0.04);
+  playTone(660, 0.05, 'square', 0.03, 0.07);
+}
+
+function playDataPing() {
+  if(!ctx) return;
+  playTone(1320, 0.08, 'sine', 0.05);
+}
+
+// Start on first interaction
+let audioStarted = false;
+document.addEventListener('click', () => {
+  if(!audioStarted) {
+    audioStarted = true;
+    initAudio();
+    playAmbient();
+    setInterval(playAmbient, 8000);
+    setInterval(playHeatBeep, 3500);
+    setInterval(playDataPing, 6000);
+  }
+}, {once:false});
+
+// ===== CLOCK =====
+function updateClock() {
+  const n = new Date();
+  document.getElementById('liveClock').textContent = n.toTimeString().split(' ')[0];
+}
+setInterval(updateClock, 1000); updateClock();
+
+// ===== DYNAMIC VALUES =====
+let baseTemp = 87;
+let baseCpu = 91;
+let fragBase = 2847312;
+
+function updateValues() {
+  const temp = (baseTemp + (Math.random()*4-1)).toFixed(1);
+  const cpu  = Math.min(99, (baseCpu + (Math.random()*3-0.5))).toFixed(1);
+  const frag = fragBase + Math.floor(Math.random()*50-10);
+  fragBase = frag;
+
+  document.getElementById('tempVal').textContent = temp + '°C';
+  document.getElementById('cpuVal').textContent  = cpu + '%';
+  document.getElementById('fragCount').textContent = frag.toLocaleString('fr') + ' UNITÉS ACTIVES';
+
+  // Agent count fluctuates
+  const agents = 3 + Math.floor(Math.random()*3);
+  document.getElementById('agentCount').textContent = agents + ' EN OPÉRATION';
+
+  // Heat bar
+  const barW = 80 + Math.random()*15;
+  document.getElementById('heatBar').style.width = Math.min(99,barW) + '%';
+}
+updateValues();
+setInterval(updateValues, 1800);
+
+// ===== CROSSHAIR =====
+document.addEventListener('mousemove', e => {
+  document.getElementById('cx').style.top = e.clientY + 'px';
+  document.getElementById('cy').style.left = e.clientX + 'px';
+});
+
+// ===== DATA STREAM TICKER =====
+const streamTexts = [
+  'FLUX COGNITIF — 2847312 FRAGMENTS EN TRANSIT',
+  'NŒUD-09 // TEMPÉRATURE CRITIQUE — ALERTE NIVEAU 3',
+  'CERBERUS ACCESS DÉTECTÉ — SURVEILLANCE ACTIVE',
+  'CONTAMINATION PASSIVE — PROPAGATION INTER-AGENTS CONFIRMÉE',
+  'PROJET LIMINAL — PHASE 4 — EN COURS',
+  'PROTOCOLE MESS-TESTAMENT — BLOQUÉ — CERBERUS',
+  'ROY TSUKINO — STATUT : DÉCÉDÉ CONFIRMÉ — 2035.02.18',
+  'CLÉ DE DÉCHIFFREMENT — LOCALISATION INCONNUE',
+  'SOVEREIGN CORP — TECHNOLOGIE SEUIL-Ω — ACTIVE',
+  'ARIANE — PROFIL RECHERCHÉ — PRIORITÉ ABSOLUE',
+  'WEYLAND D. — DIRECTEUR CERBERUS — CONNEXION DÉTECTÉE',
+  'FLUX CHIFFRÉ TLV→LS — AES-512-Ω — NOMINAL',
+];
+let si = 0;
+function updateStream() {
+  document.getElementById('dataStream').textContent = '>> ' + streamTexts[si % streamTexts.length];
+  si++;
+}
+updateStream();
+setInterval(updateStream, 3000);
+
+// ===== ALERT TEMP COLOR =====
+setInterval(() => {
+  const t = parseFloat(document.getElementById('tempVal').textContent);
+  const el = document.getElementById('tempVal');
+  if(t > 90) {
+    el.style.animation = 'blink 0.5s infinite';
+    el.style.color = '#ff0000';
+  } else {
+    el.style.animation = 'blink 0.9s infinite';
+    el.style.color = '';
+  }
+}, 1800);
+</script>
+
+</body>
+</html>
